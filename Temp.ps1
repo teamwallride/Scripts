@@ -38,7 +38,7 @@ Function SQLQuery {
     $Connection.Close()
     Return $SqlTable
 }
-Function Get-FailedJobs {
+Function Get-BackupStatus {
     $ErrorActionPreference = "Stop" # This works well. It still logs terminating and non-terminating events.
     Try {
         $PSVersion = $PSVersionTable.PSVersion
@@ -49,51 +49,51 @@ Function Get-FailedJobs {
         $CommDbServer = (Get-ItemProperty $SetupRegKey).sINSTANCE
         $CommDbName = (Get-ItemProperty $SetupRegKey).sCSDBNAME
 
-        # Get total jobs
-        $DbQuery = "SELECT COUNT(*) as TotalJobs
+        # Get total jobs.
+        $DbQuery = "SELECT COUNT(*) as TotalBackupJobs
 FROM [$CommDbName].[dbo].[CommCellBackupInfo]
 where CONVERT(datetime,SWITCHOFFSET(CONVERT(datetimeoffset,enddate),DATENAME(TzOffset, SYSDATETIMEOFFSET()))) > GETDATE()-1 --and jobstatus = 'successZ'"
         $SqlTable = SQLQuery -DbServer $CommDbServer -DbName $CommDbName -DbQuery $DbQuery
-        $CntTotalJobs = $SqlTable.TotalJobs
+        $CntTotalBackupJobs = $SqlTable.TotalBackupJobs
 
-        # We expect lots of jobs so if 0 log event and quit.
-        If ($CntTotalJobs -lt 1) {
+        # We expect a lot of jobs so if 0 log event and quit.
+        If ($CntTotalBackupJobs -lt 1) {
             $Message += "SQL query executed successfully but 0 total jobs were returned. Please investigate."
             $ScriptState = "Warning"
             Write-Log -ScriptState $ScriptState
         }
         Else {
-            # Get failed jobs
+            # Get unsuccessful jobs.
             $Bag = $MomApi.CreatePropertyBag()
-            $DbQuery = "SELECT COUNT(*) as FailedJobs
+            $DbQuery = "SELECT COUNT(*) as UnsuccessfulBackupJobs
 FROM [$CommDbName].[dbo].[CommCellBackupInfo]
 where CONVERT(datetime,SWITCHOFFSET(CONVERT(datetimeoffset,enddate),DATENAME(TzOffset, SYSDATETIMEOFFSET()))) > GETDATE()-1
-and jobstatus != 'success'"
+and jobstatus != 'Success'"
             $SqlTable = SQLQuery -DbServer $CommDbServer -DbName $CommDbName -DbQuery $DbQuery
-            $CntFailedJobs = $SqlTable.FailedJobs
+            $CntUnsuccessfulBackupJobs = $SqlTable.UnsuccessfulBackupJobs
             # Do math to get % success jobs.
-            $PctSuccess = [Math]::Round(($CntTotalJobs - $CntFailedJobs) / $CntTotalJobs * 100, 2)
+            $PctSuccessfulBackupJobs = [Math]::Round(($CntTotalBackupJobs - $CntUnsuccessfulBackupJobs) / $CntTotalBackupJobs * 100, 2)
             $SuccessJobsThreshold = '99.99' # Set to 98.00 in prod.
             # Add count and % to property bag regardless of what threshold is.
-            $Bag.AddValue('CntTotalJobs', $CntTotalJobs)
-            $Bag.AddValue('CntFailedJobs', $CntFailedJobs)
-            $Bag.AddValue('PctSuccessJobs', $PctSuccess)
-            If ($PctSuccess -lt $SuccessJobsThreshold) {
-                $Bag.AddValue('FailedJobs', 'FailedJobsWarning')
+            $Bag.AddValue('CntTotalBackupJobs', $CntTotalBackupJobs)
+            $Bag.AddValue('CntUnsuccessfulBackupJobs', $CntUnsuccessfulBackupJobs)
+            $Bag.AddValue('PctSuccessfulBackupJobs', $PctSuccessfulBackupJobs)
+            If ($PctSuccessfulBackupJobs -lt $SuccessJobsThreshold) {
+                $Bag.AddValue('BackupStatus', 'Unhealthy')
             }
             Else {
-                $Bag.AddValue('FailedJobs', 'FailedJobsOK')
+                $Bag.AddValue('BackupStatus', 'Healthy')
             }
             <# FOR TESTING
-write-host "Total Jobs: $CntTotalJobs"
-write-host "Failed Jobs: $CntFailedJobs"
-write-host "% Success Jobs: $PctSuccess"
+write-host "Total Jobs: $CntTotalBackupJobs"
+write-host "Unsuccessful Jobs: $UnsuccessfulBackupJobs"
+write-host "% Success Jobs: $PctSuccessfulBackupJobs"
 write-host "% Success Threshold: $SuccessJobsThreshold"
 write-host
 $MomApi.Return($Bag)
 #>
             $Bag
-            $Message += "$CntFailedJobs failed jobs."
+            $Message += "$CntUnsuccessfulBackupJobs failed jobs."
             $ScriptState = "Information"
             Write-Log -ScriptState $ScriptState
         }
@@ -104,10 +104,10 @@ $MomApi.Return($Bag)
 }
 # Declare all constants used by the script
 $MomApi = New-Object -comObject 'MOM.ScriptAPI'
-$ScriptName = "FailedJobs.ps1"
+$ScriptName = "BackupStatus.ps1"
 $Account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-$WorkflowName = "SQL.Monitor.FailedJobs"
-$MPName = "SQL.Monitoring"
-$MpVersion = "2023.7.19.0"
+$WorkflowName = "Commvault.Monitor.BackupStatus"
+$MPName = "Commvault.Monitoring"
+$MpVersion = "2023.7.21.5"
 [datetime]$StartTime = Get-Date
-Get-FailedJobs
+Get-BackupStatus

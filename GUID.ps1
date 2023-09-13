@@ -1,2 +1,5 @@
-# This will generate a nice guid for you. Useful in override MPs.
+# Generate a sinlge GUID
 [guid]::NewGuid().ToString("N")
+
+# Generate x number of GUIDs
+1..5 | % {[guid]::NewGuid().ToString("N")}

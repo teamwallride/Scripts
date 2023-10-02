@@ -1,34 +1,37 @@
+<#
+29/9/2023 script seems good but now need to test.
+Things to consider:
+-Need to alert on warnings, test them.
+#>
+
 Param ($SourceId, $ManagedEntityId, $ComputerName)
 Function Write-Log {
-    Param($ScriptState)
-    if ($ScriptState -eq "Information") {
-        $EventId=17609
-        $EventLevel=0 # 0=Info
+    Param($EventLevel)
+    Write-Host -ForegroundColor Red $EventLevel
+    if ($EventLevel -eq 0) {
+        $EventId = 17609
     }
     else {
-        $EventId=17610
-        $EventLevel=2 # 2=Warning
+        $EventId = 17610
     }
-    $End=Get-Date
-    $TimeCount=(New-TimeSpan -Start $StartTime -End $End)
-    $Minutes=$TimeCount.Minutes
-    $Seconds=$TimeCount.Seconds
-    $Milliseconds=$TimeCount.Milliseconds
-    $MomApi.LogScriptEvent("$ScriptName executed and ran for $Minutes`m $Seconds`s $Milliseconds`ms", $EventId, $EventLevel, "`nRunning As: $Account`nWorkflow Name: $MpWorkflow`nManagement Pack: $Mp ($MpVersion)`nPowerShell Version: $PSVersion`nScript Output: Any issues encountered will be shown below.`n$Message")
+    $End = Get-Date
+    $TimeCount = (New-TimeSpan -Start $StartTime -End $End)
+    $Minutes = $TimeCount.Minutes
+    $Seconds = $TimeCount.Seconds
+    $Milliseconds = $TimeCount.Milliseconds
+    $MomApi.LogScriptEvent("$ScriptName executed and ran for $Minutes`m $Seconds`s $Milliseconds`ms", $EventId, $EventLevel, "`nRunning As: $Account`nWorkflow Name: $MpWorkflow`nManagement Pack: $Mp ($MpVersion)`nPowerShell Version: $PSVersion`Any issues encountered will be shown below.`n$Message")
     Break
 }
 Function Get-URInfo {
-    $ErrorActionPreference = "Stop"
-    #$ErrorActionPreference = "Continue"
+    # Need event output so don't quit on error.
+    $ErrorActionPreference = "Continue"
     Try {
-        #$ScriptState
         # FOR TESTING
         $SourceId = '{00000000-0000-0000-0000-000000000000}'
         $ManagedEntityId = '{00000000-0000-0000-0000-000000000000}'
         $ComputerName = 'agent.scomtest.local'
         #>
         $DiscoveryData = $MomApi.CreateDiscoveryData(0, $SourceId, $ManagedEntityId)
-        $ObjAgentConfig = New-Object -ComObject "AgentConfigManager.MgmtSvcCfg"
         # Get PowerShell version.
         $PSVersion = $PSVersionTable.PSVersion
         [string]$PSMajor = $PSVersion.Major
@@ -48,17 +51,17 @@ Function Get-URInfo {
         # Get management groups.
         $InstallDirectory = (Get-ItemProperty -Path $SetupRegKey).InstallDirectory.TrimEnd("\")
         $MGFolders = Get-ChildItem -Path "$InstallDirectory\Health Service State\Connector Configuration Cache"
-        $MGCount = ($MGFolders | Measure-Object).Count
         $MGFolders | ForEach-Object {
             $MGName = $_.Name
-            $MGNames += "$MGName,"
+            $ManagementGroups += "$MGName,"
             $ConfigFile = "$InstallDirectory\Health Service State\Connector Configuration Cache\$MGName\OpsMgrConnector.Config.xml"
-            If (-not(Test-Path -Path $ConfigFile)) {
-                $ScriptState = "Warning"
+            If (-Not(Test-Path -Path $ConfigFile)) {
+                # Log warning.
+                [int]$EventLevel = 2
                 $Message += "Management group '$MGName' is missing OpsMgrConnector.Config.xml file.`n"
             }
         }
-        $MGNames = $MGNames.TrimEnd(",")
+        $ManagementGroups = $ManagementGroups.TrimEnd(",")
         # Get HealthService account. We just want to know the account it's using. Don't care about service state.
         $HealthServiceAccount = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\HealthService").ObjectName
         # Get certificate.
@@ -78,13 +81,18 @@ Function Get-URInfo {
             "0" { $ADIntegration = "Disabled"; BREAK }
             "1" { $ADIntegration = "Enabled"; BREAK }
         }
-        # Check if APM is installed. We just want to know if it's installed or not.
+        # Get APM status. If installed get service state otherwise set to NotInstalled.
         $APMServiceRegKey = "HKLM:\SYSTEM\CurrentControlSet\Services\System Center Management APM"
         If (Get-Item -Path $APMServiceRegKey -ErrorAction Ignore) {
-            $APMInstalled = "Yes"
+            $APMServiceStartMode = (Get-ItemProperty -Path $APMServiceRegKey -ErrorAction Ignore).Start
+            Switch ($APMServiceStartMode) {
+                "2" { $APMServiceStartMode = "Automatic"; BREAK }
+                "3" { $APMServiceStartMode = "Manual"; BREAK }
+                "4" { $APMServiceStartMode = "Disabled"; BREAK }
+            }
         }
         Else {
-            $APMInstalled = "No"
+            $APMServiceStartMode = "NotInstalled"
         }
         # Get ACS forwarder. This key is on every agent, gateway and management server so we just want to know the service status.
         $ACSForwarderServiceRegKey = "HKLM:SYSTEM\CurrentControlSet\Services\AdtAgent"
@@ -94,71 +102,18 @@ Function Get-URInfo {
             "3" { $ACSForwarderServiceStartMode = "Manual"; BREAK }
             "4" { $ACSForwarderServiceStartMode = "Disabled"; BREAK }
         }
-        # Get TLS1.2 registry settings. This checks if the server has been explicitly configured to communicate with only TLS1.2 (i.e. all other protocols disabled).
-        $Count = 0
-        $ArrayTLS12NETEnabled = "HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319", "HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319"
-        $ArrayTLS12NETEnabled | ForEach-Object {
-            If (Test-Path -Path $_) {
-                $TLS12NETEnabled = (Get-ItemProperty -Path $_).SchUseStrongCrypto
-                If ($TLS12NETEnabled -eq 1) {
-                    $Count += 1
-                }
-            }
-        }
-        $TLS12OSRegKey = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2"
-        $ArrayTLS12OS = "Client", "Server"
-        $ArrayTLS12OS | ForEach-Object {
-            If (Test-Path -Path "$TLS12OSRegKey\$_") {
-                $TLS12OSEnabled = (Get-ItemProperty "$TLS12OSRegKey\$_").Enabled
-                $TLS12OSDisabledByDefault = (Get-ItemProperty "$TLS12OSRegKey\$_").DisabledByDefault
-                If ($TLS12OSEnabled -eq 1 -and $TLS12OSDisabledByDefault -eq 0) {
-                    $Count += 1
-                }
-            }
-        }
-        If ($Count -eq 0) {
-            $TLS12 = "NoConfig"
-        }
-        ElseIf ($Count -eq 4) {
-            $TLS12 = "CorrectConfig"
-        }
-        Else {
-            $TLS12 = "IncompleteConfig"
-        }
         # Get Log Analytics workspaces. Use the registry as it's more reliable than AgentConfigManager.MgmtSvcCfg.
         $LAWorkspaceRegKey = "HKLM:\SYSTEM\CurrentControlSet\Services\HealthService\Parameters\Service Connector Services"
-        If (Get-Item -Path $LAWorkspaceRegKey -ErrorAction Ignore) {
-            $BindLAWorkspaceRegKey = Get-Item $LAWorkspaceRegKey
-            $LAWorkspaceCount = ($BindLAWorkspaceRegKey).SubKeyCount
-            If ($LAWorkspaceCount -gt 0) {
-                $ArrayLAWorkspaces = $BindLAWorkspaceRegKey.GetSubKeyNames() # Get each subkey and create an array in case there's more than 1.
-                $ArrayLAWorkspaces | ForEach-Object { # Cycle through each item in the array.
-                    $LAWorkspaceId = $_.Substring(16) # Remove "Log Analytics - " from the key name so we just have the workspace id.
-                    $LAWorkspaceType = (Get-ItemProperty -Path $LAWorkspaceRegKey\$_)."Azure Cloud Type"
-                    Switch ($LAWorkspaceType) {
-                        "0" { $LAWorkspaceType = "Azure Commercial"; BREAK }
-                        "1" { $LAWorkspaceType = "Azure US Government"; BREAK }
-                        "2" { $LAWorkspaceType = "Azure China"; BREAK }
-                        "3" { $LAWorkspaceType = "Azure US Nat"; BREAK }
-                        "4" { $LAWorkspaceType = "Azure US Sec"; BREAK }
-                    }
-                    $LAWorkspaces += "Type=$LAWorkspaceType,WorkSpaceId=$LAWorkspaceId;"
-                }
-                $LAWorkspaces = $LAWorkspaces.TrimEnd(";")
+        If ((Get-Item -Path $LAWorkspaceRegKey -ErrorAction Ignore).SubKeyCount -gt 0) {
+            (Get-Item $LAWorkspaceRegKey).GetSubKeyNames() | ForEach-Object {
+                $LAWorkspaceId = $_.Substring(16) # Remove "Log Analytics - " from the key name so we just have the workspace id.
+                $LogAnalyticsAWorkspaces += "$LAWorkspaceId,"
             }
-            Else {
-                $LAWorkspaceCount = "0"
-                $LAWorkspaces = "n/a"
-            }
+            $LogAnalyticsAWorkspaces = $LogAnalyticsAWorkspaces.TrimEnd(",")
         }
         Else {
-            $LAWorkspaceCount = "0"
-            $LAWorkspaces = "n/a"
+            $LogAnalyticsAWorkspaces = "n/a"
         }
-        # Get Log Analytics proxy server.
-        #$LAProxyUrl = $ObjAgentConfig.proxyUrl
-        # Get Log Analytics account.
-        #$LAProxyUsername = $ObjAgentConfig.proxyUsername
         <#
         AGENTS. This section applies to agents only.
         #>
@@ -205,6 +160,8 @@ Function Get-URInfo {
             $AgentInstallDirectory = "n/a"
             $AgentVersion = "n/a"
         }
+
+
         <#
         MANAGEMENT SERVERS. This section applies to management servers only.
         #>
@@ -326,9 +283,6 @@ Function Get-URInfo {
         Else {
             $ACSCollectorServiceAccount = "n/a"
             $ACSCollectorVersion = "n/a"
-            #$ACSCollector = "No"
-            #$ACSCollectorServiceStartMode = "n/a"
-            #$ACSCollectorLastUpdate = "n/a"
         }
         <#
         GATEWAY SERVERS. This section applies to gateway servers only.
@@ -381,12 +335,10 @@ Function Get-URInfo {
                 "10.19.10153.0" { $GatewayServerVersion = "2019 UR2"; BREAK }
             }
         }
-        Else { 
+        Else {
             $GatewayServerInstallDirectory = "n/a"
             $GatewayServerLastUpdate = "n/a"
             $GatewayServerVersion = "n/a"
-            #$GatewayMGCount="n/a"
-            #$GatewayMGFailovers="n/a"
         }
         <#
         WEB CONSOLE SERVER. This section applies to web console servers only.
@@ -417,7 +369,6 @@ Function Get-URInfo {
                     $WebConsoleVersion = $WebConsoleURFile
                 }
             }
-
             # Best UR file for 2019.
             If (Test-Path "$WebConsoleInstallDirectory\Dashboard\bin\Microsoft.EnterpriseManagement.OMDataService.dll") {
                 $WebConsoleURFile = (Get-Item "$WebConsoleInstallDirectory\Dashboard\bin\Microsoft.EnterpriseManagement.OMDataService.dll").VersionInfo.FileVersion
@@ -475,7 +426,6 @@ Function Get-URInfo {
         }
         Else {
             $WebConsoleInstallDirectory = "n/a"
-            #$WebConsoleLastUpdate = "n/a"
             $WebConsoleVersion = "n/a"
             $AuthenticationMode = "n/a"
             $DefaultServer = "n/a"
@@ -496,29 +446,6 @@ Function Get-URInfo {
                     $ReportServerURFile = (Get-Item "C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Microsoft.EnterpriseManagement.OperationsManager\v4.0_7.0.5000.0__31bf3856ad364e35\Microsoft.EnterpriseManagement.OperationsManager.dll").VersionInfo.FileVersion
                     $ReportServerVersion = $ReportServerURFile
                 }
-                <#
-                2019. This needs to be re-done.
-                ElseIf ($Script:FileVersion -match "10.19") {
-                    # 2019.
-                    $File1 = "C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Microsoft.EnterpriseManagement.Core\v4.0_7.0.5000.0__31bf3856ad364e35\Microsoft.EnterpriseManagement.Core.dll" # RTM & UR1Hotfix. Created when RS installed.
-                    # Get-FileInfo $File1 # Alert if file doesn't exist.
-                    $ReportServerLastUpdate = $Script:FileLastAccessTime # Determines when UR was installed.
-                    $ReportServerVersion = $Script:FileVersion
-                    $File1Date = $Script:FileLastAccessTimeRaw
-                    $File1Version = $Script:FileVersion
-                    $File2 = "C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Microsoft.EnterpriseManagement.OperationsManager\v4.0_7.0.5000.0__31bf3856ad364e35\Microsoft.EnterpriseManagement.OperationsManager.dll" # UR1, UR2.
-                    # Get-FileInfo $File2 NoAlert # Don't alert if file doesn't exist.
-                    If ($Script:FileExists -eq $True) {
-                        $File2Date = $Script:FileLastAccessTimeRaw
-                        $File2Version = $Script:FileVersion
-                        If ($File1Date -lt $File2Date) {
-                            # If $File2Date is older than $File1Date it means UR1Hotfix has been installed.
-                            $ReportServerLastUpdate = $Script:FileLastAccessTime # Determines when UR was installed.
-                            $ReportServerVersion = $Script:FileVersion
-                        }
-                    }
-                }
-                #>
             }
             Switch ($ReportServerVersion) {
                 # SCOM 2012 R2
@@ -559,14 +486,12 @@ Function Get-URInfo {
         }
         Else {
             $ReportServerInstallDirectory = "n/a"
-            #$ReportServerLastUpdate = "n/a"
             $ReportServerVersion = "n/a"
             $ReportServerDwDbServer = "n/a"
             $ReportServerDWDBName = "n/a"
             $ReportServerUrl = "n/a"
             $SRSInstance = "n/a"
             $ReportServerServiceAccount = "n/a"
-            #$ReportServerServiceStartMode = "n/a"
         }
         <#
         CONSOLES. This section applies to operations manager consoles only.
@@ -620,23 +545,19 @@ Function Get-URInfo {
             $ConsoleVersion = "n/a"
         }
         # FOR TESTING
+        write-host "PrincipalName: $ComputerName"
+        write-host "ComputerType: $ComputerType"
         write-host "OperatingSystem: $OperatingSystem"
         write-host "Product: $Product"
         write-host "AgentInstallDirectory: $AgentInstallDirectory"
         write-host "AgentVersion: $AgentVersion"
-        write-host "MGCount: $MGCount"
-        write-host "MGNames: $MGNames"
+        write-host "ManagementGroups: $ManagementGroups"
         write-host "HealthServiceAccount: $HealthServiceAccount"
         write-host "CertificateExpiry: $CertificateExpiry"
         write-host "ADIntegration: $ADIntegration"
-        write-host "APMInstalled: $APMInstalled"
+        write-host "APMServiceStartMode: $APMServiceStartMode"
         write-host "ACSForwarderServiceStartMode: $ACSForwarderServiceStartMode"
-        write-host "TLS12: $TLS12"
-        write-host "LAWorkspaceCount: $LAWorkspaceCount"
-        write-host "LAWorkspaces: $LAWorkspaces"
-        write-host "LAProxyUrl: $LAProxyUrl"
-        write-host "LAProxyUsername: $LAProxyUsername"
-        write-host "ComputerType: $ComputerType"
+        write-host "LogAnalyticsAWorkspaces: $LogAnalyticsAWorkspaces"
         write-host "MgmtServerInstallDirectory: $MgmtServerInstallDirectory"
         write-host "MgmtServerVersion: $MgmtServerVersion"
         write-host "ConfigServiceAccount: $ConfigServiceAccount"
@@ -667,29 +588,23 @@ Function Get-URInfo {
         write-host "ReportServerServiceAccount: $ReportServerServiceAccount"
         write-host "ConsoleInstallDirectory: $ConsoleInstallDirectory"
         write-host "ConsoleVersion: $ConsoleVersion"
-        Write-Host "PSVersion: $PSVersion" # Not returned as discovery data. Only used in events.
+        write-host "DisplayName: $ComputerName"
         #>
         # Return discovery data.
         $Instance = $DiscoveryData.CreateClassInstance("$MPElement[Name='SCOM.Class.URWindowsComputer']$")
         $Instance.AddProperty("$MPElement[Name='Windows!Microsoft.Windows.Computer']/PrincipalName$", $ComputerName)
+        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ComputerType$", $ComputerType)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/OperatingSystem$", $OperatingSystem)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/Product$", $Product)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/AgentInstallDirectory$", $AgentInstallDirectory)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/AgentVersion$", $AgentVersion)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/MGCount$", $MGCount)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/MGNames$", $MGNames)
+        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ManagementGroups$", $ManagementGroups)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/HealthServiceAccount$", $HealthServiceAccount)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/CertificateExpiry$", $CertificateExpiry)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ADIntegration$", $ADIntegration)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/APMInstalled$", $APMInstalled)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ACSForwarderServiceAccount$", $ACSForwarderServiceAccount)
+        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/APMServiceStartMode$", $APMServiceStartMode)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ACSForwarderServiceStartMode$", $ACSForwarderServiceStartMode)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/TLS12$", $TLS12)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/LAWorkspaceCount$", $LAWorkspaceCount)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/LAWorkspaces$", $LAWorkspaces)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/LAProxyUrl$", $LAProxyUrl)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/LAProxyUsername$", $LAProxyUsername)
-        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ComputerType$", $ComputerType)
+        $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/LogAnalyticsAWorkspaces$", $LogAnalyticsAWorkspaces)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/MgmtServerInstallDirectory$", $MgmtServerInstallDirectory)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/MgmtServerVersion$", $MgmtServerVersion)
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ConfigServiceAccount$", $ConfigServiceAccount)
@@ -722,18 +637,23 @@ Function Get-URInfo {
         $Instance.AddProperty("$MPElement[Name='SCOM.Class.URWindowsComputer']/ConsoleVersion$", $ConsoleVersion)
         $Instance.AddProperty("$MPElement[Name='System!System.Entity']/DisplayName$", $ComputerName)
         $DiscoveryData.AddInstance($Instance)
+
+
+
         # Submit discovery data back to Operations Manager and complete the script.
         $DiscoveryData
         # FOR TESTING
         $MomApi.Return($DiscoveryData)
         #>
-        $ScriptState = "Information"
-        Write-Log -ScriptState $ScriptState   
+         # Log info.
+        [int]$EventLevel = 0
+        Write-Log -ScriptState $EventLevel   
     }
     Catch {
-        $ScriptState = "Warning"
+         # Log warning.
+        [int]$EventLevel = 2
         $Message += $_.Exception.Message
-        Write-Log -ScriptState $ScriptState   
+        Write-Log -ScriptState $EventLevel   
     }
 }
 # Declare all constants used by the script`
@@ -742,6 +662,6 @@ $MomApi = New-Object -comObject 'MOM.ScriptAPI'
 $ScriptName = "GetURInfo.ps1"
 $Account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $Mp = "Microsoft.SCOM.UpdateRollup"
-$MpVersion = "2023.9.28.0"
+$MpVersion = "2023.10.2.0"
 $MpWorkflow = "SCOM.Discovery.WindowsUpdateRollup"
 Get-URInfo -SourceId $SourceId -ManagedEntityId $ManagedEntityId -ComputerName $ComputerName

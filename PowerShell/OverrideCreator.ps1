@@ -1,30 +1,4 @@
-<#
-  .SYNOPSIS
-  Creates SCOM override management pack.
-
-  .DESCRIPTION
-  This script reads a csv file that contains specific override configuration information selected by a product SME and creates an unsealed xml mp file.
-  It also adds the appropriate mp references so the mp is ready for import straight away.
-  Due to restrictions on running scripts interactively. All config is done within the script.
-  
-  You will need to update these variables:
-
-  $script:MP_IMPORT_FOLDER=CSV_Folder_Path
-  $script:MP_OUTPUT_FOLDER=XML_Output_Folder
-  $script:MP_CSV_FILE=MP_Filename
-
-  This has been tested on the following SCOM versions:
-
-  - 2016
-
-  .NOTES
-  Author: Anthony Milic
-  Version (YMD#): 2022.4.4.1
-  
-  Changes
-  -Rename "export" word to "output".
-  -Change folder path from "D:\Scripts\MP\Overrides" to "D:\Scripts\Overrides".
-#>
+param($MpImportFile)
 
 # Disable rule/monitor.
 Function EnableOrDisableWorkflow {
@@ -81,13 +55,11 @@ $Script:OUTPUT_OVERRIDES=""
 $Script:OUTPUT_END=""
 $Script:Hash=""
 $Script:Hash=@{}
-$Script:MP_CSV_FILE="Microsoft.SystemCenter.2007.csv" # Update this. Csv to import. Must contain appropriate values.
-$Script:MP_IMPORT_FOLDER="D:\Scripts\Overrides\Import" # Update this. Folder path of the csv file.
-$Script:MP_OUTPUT_FOLDER="D:\Scripts\Overrides\Output" # Update this. Overrides xml file will be dumpled here.
-$Script:OVERRIDES=Import-Csv "$Script:MP_IMPORT_FOLDER\$Script:MP_CSV_FILE"
-$Script:CatAGroupName=get-scomclass -name "Cmdb.Group.ADDSCatA" # Update this. Use dot name.
-$Script:CatBGroupName=get-scomclass -name "Cmdb.Group.ADDSCatB" # Update this. Use dot name.
-#$Script:CatCGroupName=get-scomclass -name "Cmdb.Group.HealthServiceWatcherCatC" # Update this. Use dot name.
+$Script:MP_OUTPUT_FOLDER="C:\Build\MP\Overrides\Export" # Update this. Overrides xml file will be dumpled here.
+$Script:OVERRIDES=Import-Csv $MpImportFile
+$Script:CatAGroupName=get-scomclass -name "Microsoft.SCOM.CMDB.Group.WindowsServerCatA" # Update this. Use dot name.
+$Script:CatBGroupName=get-scomclass -name "Microsoft.SCOM.CMDB.Group.WindowsServerCatB" # Update this. Use dot name.
+$Script:CatCGroupName=get-scomclass -name "Microsoft.SCOM.CMDB.Group.WindowsServerCatC" # Update this. Use dot name.
 
 ForEach($Script:OVERRIDE in $Script:OVERRIDES){
 [int]$Script:CountAll+=1
@@ -174,6 +146,7 @@ if(($Script:KEEP -eq "yes") -AND ($Script:WORKFLOW_TYPE -eq "monitor") -AND ($Sc
 
 	<# CatC.
 	Comment out if not needed.
+	#>
 	$Script:ENABLED_VALUE="true"
 	$Script:ENFORCED_VALUE="false"
 	$Script:GroupName=$Script:CatCGroupName.Name
@@ -200,7 +173,14 @@ $Script:OUTPUT_REFERENCE+=@"
 </Reference>
 "@
 }
+
+# Tack on cmdb reference.
 $Script:OUTPUT_REFERENCE+=@"
+<Reference Alias="Cmdb">
+<ID>Microsoft.SCOM.CMDB.Monitoring</ID>
+<Version>2023.10.23.0</Version>
+<PublicKeyToken>b9103d6ec5285c3a</PublicKeyToken>
+</Reference>
 </References>
 </Manifest>
 <Monitoring>
@@ -208,6 +188,13 @@ $Script:OUTPUT_REFERENCE+=@"
 "@
 
 # MP preamble
+# Format date for mp version.
+$a=get-date
+$year = $a.year
+$month = $a.month
+$day = $a.day
+$increment = 0
+$MpVersion = "$year.$month.$day.$increment"
 $Script:WORKFLOW_MP_NAME=$Script:OVERRIDES.WORKFLOW_MP_NAME | Select-Object -Unique
 $Script:WORKFLOW_MP_DISPLAYNAME=$Script:OVERRIDES.WORKFLOW_MP_DISPLAYNAME | Select-Object -Unique
 $Script:WORKFLOW_MP_FRIENDLYNAME=$Script:OVERRIDES.WORKFLOW_MP_FRIENDLYNAME | Select-Object -Unique
@@ -216,7 +203,7 @@ $Script:OUTPUT_START=@"
   <Manifest>
     <Identity>
       <ID>$Script:WORKFLOW_MP_NAME.Overrides</ID>
-      <Version>1.0.0.0</Version>
+      <Version>$MpVersion</Version>
     </Identity>
     <Name>$Script:WORKFLOW_MP_FRIENDLYNAME Overrides</Name> <!--This is the mp "FriendlyName".-->
     <References>

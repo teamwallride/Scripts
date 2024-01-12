@@ -1,13 +1,20 @@
 # This only shows DisplayName, Path and Id to fit on screen.
 param($Type, $Class)
 Write-Host
-Write-Host -ForegroundColor yellow "Getting class instances..."
+Write-Host -ForegroundColor yellow "Getting class instances... "
+Write-Host
+Write-Host -ForegroundColor yellow "DISPLAY_NAME^PATH^ID"
 if ($Type -eq "n") {
-    get-scomclass -name "$Class" | get-scomclassinstance | sort Name | ft DisplayName, Path, Id -au
+    $a=get-scomclass -name "$Class" | get-scomclassinstance | sort DisplayName
 }
 elseif ($Type -eq "d") {
-    get-scomclass -displayname "$Class" | get-scomclassinstance | sort Name | ft DisplayName, Path, Id -au
+    $a=get-scomclass -displayname "$Class" | get-scomclassinstance | sort DisplayName
 }
-foreach ($i in $a) { write-host $i.displayname"^"$i.path"^"$i.id }
-write-host
-write-host "Count: " $a.count
+foreach ($i in $a) {
+	$d=$i.displayname
+	$p=$i.path
+	$i=$i.id
+	write-host $d"^"$p"^"$i
+	}
+Write-Host
+Write-Host "Count: " $a.count

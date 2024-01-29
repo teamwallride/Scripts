@@ -3,7 +3,7 @@ param($Type, $Class)
 Write-Host
 Write-Host -ForegroundColor yellow "Getting classes..."
 if ($Type -eq "n") {
-    Get-SCOMClass -Name "*$Class*" | sort Name | ft Name, DisplayName, Id -a
+    Get-SCOMClass -Name "*$Class*" | sort Name | ft Name, DisplayName, Id -au
 }
 elseif ($Type -eq "d") {
     Get-SCOMClass -DisplayName "*$Class*" | sort DisplayName | ft DisplayName, Name, Id -au

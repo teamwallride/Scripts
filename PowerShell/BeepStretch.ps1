@@ -12,6 +12,6 @@ $synth = New-Object -TypeName System.Speech.Synthesis.SpeechSynthesizer
     $synth.Speak($_)
     Start-Sleep 30
     if ($_ -eq 10) {
-        $synth.Speak("Stretching complete")
+        $synth.Speak("Stretching complete. You are awesome.")
     }
 }

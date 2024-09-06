@@ -7,3 +7,8 @@ modules:
       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
       valid_status_codes: []  # Defaults to 2xx
       method: GET
+  icmp:                         # <== this is the one you already have
+    prober: icmp
+    timeout: 10s                # <== This depends on what you want to do
+    icmp:
+      preferred_ip_protocol: ip4      

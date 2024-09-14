@@ -1,18 +1,18 @@
 groups:
-- name: my_websites
+- name: my_group_1
   rules:
+  # Alerts for websites.
   - alert: website_gone_to_heaven
     expr: probe_http_status_code == 0
     for: 10s
     labels:
       severity: page
+      test: icles
     # Prometheus templates apply here in the annotation and label fields of the alert.
     annotations:
-      description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minutes.'
-#      summary: 'Instance {{ $labels.instance }} down'- name: my_websites
-
-- name: my_windows_turds
-  rules:
+      summary: "Instance {{ $labels.instance }} down"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minutes."
+  # Alerts for down Windows agents.
   - alert: windows_agent_down
     expr: up{job="Windows_exporters"}==0
     for: 10s
@@ -20,5 +20,5 @@ groups:
       severity: page
     # Prometheus templates apply here in the annotation and label fields of the alert.
     annotations:
-      description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minutes.'
-#      summary: 'Instance {{ $labels.instance }} down'- name: my_windows_turds
+      summary: "Windows exporter down - {{ $labels.instance }}"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 5 minutes."

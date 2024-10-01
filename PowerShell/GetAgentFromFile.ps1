@@ -1,47 +1,47 @@
+<#
+This gets a list of computers from file then checks to see if it's in SCOM. It checks for:
+	- Windows computers.
+	- UNIX/Linux computers.
+	- Pending queue.
+	
+Output is written to screen and csv file for sorting.
+#>
 clear-host
-$date= Get-Date
-$Match = 0
-Write-Host
-Write-Host "Script Start:" $date
-Write-Host
-New-SCOMManagementGroupConnection -ComputerName blah
-$Servers = gc C:\temp\agents.txt #| sort
-$Windows = Get-SCOMAgent #| sort PrincipalName
-$Unix = Get-SCOMClass -Name Microsoft.Unix.Computer | Get-SCOMClassInstance #| sort DisplayName
-$Pending = Get-SCOMPendingManagement #| sort AgentName
-write-host
+[int]$Count = ""
+$File = ""
+$File = "FQDN^TYPE^STATE`r"
+$Output = "C:\temp\GetAgentFromFile.csv"
+$Servers = gc C:\Temp\file.txt | sort
+#$Windows = Get-SCOMAgent | sort DisplayName
+#$Unix = Get-SCOMClass -Name Microsoft.Unix.Computer | Get-SCOMClassInstance | sort DisplayName # Gets both UNIX and Linux.
+#$Pending = Get-SCOMPendingManagement | sort AgentName
 foreach($server in $Servers)
 {
-	$check = "Windows"
-	$matchWindows = Select-String -InputObject $Windows.PrincipalName $server -Quiet
-	$check = "Pending"
-	$matchPending = Select-String -InputObject $Pending.AgentName $server -Quiet
-	$check = "Unix"
-	$matchUnix = Select-String -InputObject $Unix.DisplayName $server -Quiet
-
-	If ($matchWindows -eq $true)
+	$Count += 1
+	$ServerUpper = $server.ToUpper()
+	$MatchWindows = $Windows | where-object {$_.DisplayName -eq $server}
+	$MatchUnix = $Unix | where-object {$_.DisplayName -eq $server}
+	$MatchPending = $Pending | where-object {$_.AgentName -eq $server}
+	If ($MatchWindows)
 	{
-		$Match = $Match+1
-		Write-Host -ForegroundColor green $server.ToUpper() ", Windows, YES"
+		$File += "$ServerUpper^WINDOWS^IN SCOM`r"
+		Write-Host -ForegroundColor green "$Count^$ServerUpper^WINDOWS^IN SCOM"
 	}
-	ElseIf ($matchUnix -eq $true)
+	ElseIf ($MatchUnix)
 	{
-		$Match = $Match+1
-		Write-Host -ForegroundColor yellow $server.ToUpper() ", Unix, YES"
+		$File += "$ServerUpper^UNIX^IN SCOM`r"
+		Write-Host -ForegroundColor green "$Count^$ServerUpper^UNIX^IN SCOM"
 	}
-	ElseIf ($matchPending -eq $true)
+	ElseIf ($MatchPending)
 	{
-		$Match = $Match+1
-		Write-Host -ForegroundColor yellow $server.ToUpper() ", NA, PENDING"
+		# Only Windows servers appear in the pending queue, hence column name.
+		$File += "$ServerUpper^WINDOWS^IN PENDING`r"
+		Write-Host -ForegroundColor yellow "$Count^$ServerUpper^WINDOWS^IN PENDING"
 	}
 	Else
 	{
-		$NoMatch = $NoMatch+1
-		Write-Host -ForegroundColor red $server.ToUpper() ",NA, NO"
+		$File += "$ServerUpper^UNKNOWN^NOT IN SCOM`r"
+		Write-Host -ForegroundColor red "$Count^$ServerUpper^UNKNOWN^NOT IN SCOM"
 	}
 }
-write-host
-write-host "Total:"($Match + $NoMatch)
-write-host "Match:"$Match
-write-host "No Match:"$NoMatch
-write-host
+$File | out-file $Output

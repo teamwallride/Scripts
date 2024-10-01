@@ -11,10 +11,10 @@ clear-host
 $File = ""
 $File = "FQDN^TYPE^STATE`r"
 $Output = "C:\temp\GetAgentFromFile.csv"
-$Servers = gc C:\Temp\file.txt | sort
-#$Windows = Get-SCOMAgent | sort DisplayName
-#$Unix = Get-SCOMClass -Name Microsoft.Unix.Computer | Get-SCOMClassInstance | sort DisplayName # Gets both UNIX and Linux.
-#$Pending = Get-SCOMPendingManagement | sort AgentName
+$Servers = Get-Content C:\Temp\file.txt | Sort-Object
+$Windows = Get-SCOMAgent | Sort-Object DisplayName
+$Unix = Get-SCOMClass -Name Microsoft.Unix.Computer | Get-SCOMClassInstance | Sort-Object DisplayName # Gets both UNIX and Linux.
+$Pending = Get-SCOMPendingManagement | Sort-Object AgentName
 foreach($server in $Servers)
 {
 	$Count += 1

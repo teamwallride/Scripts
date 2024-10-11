@@ -1,4 +1,4 @@
-WIP!!
+CLS
 <#
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
@@ -15,10 +15,11 @@ Variables to update per your needs:
 - $Recipients
 - $SmtpSubject
 #>
-CLS
 # Reset variables when testing.
 [int]$CountTotal=""
 [int]$CountEach=""
+$User=""
+$ScheduledEndTime=""
 $Output=""
 # Add list of computers to the file. Must be FQDN of agent, not just the server name.
 $File = "C:\Temp\file.txt"
@@ -106,27 +107,10 @@ $Output += "<p style='font-family:arial;font-size:20;color:#222924'>Maintenance 
 $Output += "<p style='font-family:arial;font-size:12;color:#222924'>A maintenance mode job has started.<p>Total Servers: $CountTotal<br>Start Time: $StartTimeString<br>End Time: $EndTimeString<br>Comment: $Comment</p>"
 $Output += "<table class=gridtable>"
 $Output += "<tr><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:300px;>Server</div></th><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:100px;>Status</div></th></tr>"
-foreach ($SourceComputer in $Computers)
-{
+foreach ($SourceComputer in $Computers) {
 $CountEach=$CountEach +1
 $Server=$GetSCOMAgents -match "^$SourceComputer$"
-$ComputerUpper=$SourceComputer.ToUpper()
-if ([string]::IsNullOrWhitespace($Server))
-{
-$match="false"
-}
-else
-{
-$match="true"
-}
-if ($match -ne $True)
-	{
-	$MMStatus = "Not in SCOM"
-	$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FA6258;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
-	write-host -foregroundcolor red "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
-	}
-else
-	{
+If ($GetSCOMAgents -match "^$SourceComputer$") {
 	#Connect to the computer instance. WARNING I've seen duplicates using this (like Exchange servers.):
 	#$Computer = Get-SCOMClassInstance -Name "$SourceComputer"
 	# Maybe this is better:
@@ -144,8 +128,13 @@ else
 		}
 	elseif ($Computer.InMaintenanceMode -eq $True)
 		{
-		# Could add MM end date and username here?
-		$MMStatus = "Currently in MM"
+		# THIS ISN'T WORKING, IT'S PUTTING IT TWICE. 
+		#Could add MM end date and username here?
+		#$User = $Computer.GetMaintenanceWindow().User
+		$UTCEndTime = (Get-SCOMMaintenanceMode -Instance $Computer).ScheduledEndTime
+		$LocalEndTime = $UTCEndTime.ToLocalTime()
+		#$LocalEndTime = "two string?"
+		$MMStatus = "Currently in MM" + $LocalEndTime
 		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FAF558;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor green "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		}
@@ -155,6 +144,10 @@ else
 		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FA6258;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		}
+} else {
+	$MMStatus = "Not in SCOM"
+	$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FA6258;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
+	write-host -foregroundcolor red "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 }
 }
 $Output += "</table><p>"

@@ -128,13 +128,12 @@ If ($GetSCOMAgents -match "^$SourceComputer$") {
 		}
 	elseif ($Computer.InMaintenanceMode -eq $True)
 		{
-		# THIS ISN'T WORKING, IT'S PUTTING IT TWICE. 
-		#Could add MM end date and username here?
+		# Could add MM end date and username here?
 		#$User = $Computer.GetMaintenanceWindow().User
 		$UTCEndTime = (Get-SCOMMaintenanceMode -Instance $Computer).ScheduledEndTime
-		$LocalEndTime = $UTCEndTime.ToLocalTime()
+		#$LocalEndTime = $UTCEndTime.ToLocalTime()
 		#$LocalEndTime = "two string?"
-		$MMStatus = "Currently in MM" + $LocalEndTime
+		$MMStatus = "Currently in MM (ends " + $UTCEndTime.ToLocalTime() + ")" # need to format date properly, still in mm-dd-yyyy
 		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FAF558;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor green "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		}

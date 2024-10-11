@@ -1,64 +1,114 @@
-$current = get-date
-$MMDuration = 4 #Any number 
-$Increment = "Hours" #Can be Days, Hours or Minutes, make sure you update $EndTime on the next line.
-$EndTime = ($current.AddHours($MMDuration)) # Can be AddDays, AddHours or AddMinutes.
-$StartMM = ($current).ToString("dddd d MMMM yyyy h:mm tt")
-$EndMM = ($EndTime).ToString("dddd d MMMM yyyy h:mm tt")
-$Duration = "$MMDuration $Increment"
-$Source = "C:\temp\_Computers.txt" # Update this if needed.
-$Reason = "PlannedOther" # Update this if needed.
-$Comment = "Change number here" # Update this if needed.
-$CountLines = (Get-Content $Source | Measure-Object)
-$SmtpServer = "your.smtp.server"
-$FromAddress = "from@address.com"
-$Recipients = "to@address.com"
-$SmtpSubject = "Scheduled Maintenance Mode Notification"
-Add-PSSnapin Microsoft.EnterpriseManagement.OperationsManager.Client
-New-PSDrive Monitoring Microsoft.EnterpriseManagement.OperationsManager.Client\OperationsManagerMonitoring ""
+WIP!!
+<#
+This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
+- Reads computer names from a file then MMs them.
+- Works on Windows and UNIX/Linux agents.
+- Sends email confirmation showing if the computer is ready for the MM job, already in MM, or not in SCOM at all.
+
+Variables to update per your needs:
+- $File
+- $EndTimeString
+- $Comment
+- $Reason
+- $SmtpServer
+- $FromAddress
+- $Recipients
+- $SmtpSubject
+#>
+CLS
+# Reset variables when testing.
+[int]$CountTotal=""
+[int]$CountEach=""
+$Output=""
+# Add list of computers to the file. Must be FQDN of agent, not just the server name.
+$File = "C:\Temp\file.txt"
+$Computers = gc $File | sort
+$CountTotal=($Computers.Count)
+# MM cannot be scheduled so the start time is when script is executed manually or by scheduled task.
+$StartTime = Get-Date
+# Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
+$EndTimeString = "08-11-2024 21:00:00"
+# This converts the string to a valid PowerShell date.
+$EndTimeConvertFromString = [datetime]::ParseExact($EndTimeString, 'dd-MM-yyyy HH:mm:ss', $null)
+<#
+MM in PowerShell is weird with the end date. If you use an actual date/time the end time in the console is wrong.
+If you use a calculate the number of hours/minutes/seconds until that end date and use that as end time it works.
+This code works out the number of seconds until the end date.
+#>
+$EndTimeSeconds=(New-TimeSpan -Start $StartTime -End $EndTimeConvertFromString).TotalSeconds
+$RoundUpEndTimeSeconds=[math]::Round($EndTimeSeconds)
+$RoundUpEndTimeSeconds
+$EndTimeSeconds = ($StartTime.AddSeconds($RoundUpEndTimeSeconds))
+$Comment = "CHG000456042"
+$Reason = "PlannedOther"
+<#
+Possible values for $Reason:
+PlannedOther
+UnplannedOther
+PlannedHardwareMaintenance
+UnplannedHardwareMaintenance
+PlannedHardwareInstallation
+UnplannedHardwareInstallation
+PlannedOperatingSystemReconfiguration
+UnplannedOperatingSystemReconfiguration
+PlannedApplicationMaintenance
+ApplicationInstallation
+ApplicationUnresponsive
+ApplicationUnstable
+SecurityIssue
+LossOfNetworkConnectivity
+#>
+<#
+write-host
+write-host "Total servers: $CountTotal"
+write-host
+#>
+# Email settings.
+$SmtpServer = "ExchangeRelay.prod.atonet.gov.au"
+$FromAddress = "NoReplyScom@ato.gov.au"
+$Recipients = "Anthony.Milic@ato.gov.au"
+$SmtpSubject = "Maintenance Mode Notification"
+#Add-PSSnapin Microsoft.EnterpriseManagement.OperationsManager.Client
+#New-PSDrive Monitoring Microsoft.EnterpriseManagement.OperationsManager.Client\OperationsManagerMonitoring ""
 #Set-Location Monitoring:
-New-SCOMManagementGroupConnection -ComputerName "mgmt_server"
-cls
+#New-SCOMManagementGroupConnection -ComputerName "mgmt_server"
+
 $Output = '<style type="text/css">
 table.gridtable {
-font-family: verdana;
-font-size:8px;
-color:#FFFFFF;
+font-family: arial;
+font-size:12px;
+color:#E4E3E7;
 border-width: 1px;
-border-color: #FFFFFF;
+border-color: white;
 border-collapse: collapse;
 }
 table.gridtable th {
 border-width: 1px;
 padding: 8px;
 border-style: solid;
-border-color: #FFFFFF;
+border-color: white;
 background-color:#E4E3E7;
 }
 table.gridtable td {
 border-width: 1px;
 padding: 8px;
 border-style: solid;
-border-color: #000000;
+border-color: white;
 }
 tr.cursor {cursor:pointer;}
 a.cursor {cursor:pointer;}
 </style>'
-#Get source list of computers to be put in MM.
-$SourceList = gc $Source | sort
-$CountSource=($CountLines.count)
-write-host
-write-host "Total servers: $CountSource"
-write-host
+
 #$Get Windows and Unix agents
 $GetSCOMAgents=Get-SCOMClass -name Microsoft.Windows.Computer | Get-SCOMClassInstance
 $GetSCOMAgents+=Get-SCOMClass -name Microsoft.Unix.Computer | Get-SCOMClassInstance
-$Output += "<p style='font-family:verdana;font-size:20;color:#222924'>Scheduled Maintenance Mode Notification</p>"
-$Output += "<p style='font-family:verdana;font-size:10;color:#222924'><b>Total Servers:</b> $CountSource<br><b>Start Time:</b> $StartMM<br><b>End Time: </b>$EndMM<br><b>Duration: </b>$Duration<br><b>Source: </b>$Source<br><b>Comment: </b>$Comment</p>"
+$Output += "<p style='font-family:arial;font-size:20;color:#222924'>Maintenance Mode Notification</p>"
+$Output += "<p style='font-family:arial;font-size:12;color:#222924'>A maintenance mode job has started.<p>Total Servers: $CountTotal<br>Start Time: $StartTimeString<br>End Time: $EndTimeString<br>Comment: $Comment</p>"
 $Output += "<table class=gridtable>"
-$Output += "<tr><th style=background-color:#222924><div style=width:300px;>Server</div></th><th style=background-color:#222924><div style=width:100px;>Maintenance Mode Status</div></th></tr>"
-foreach ($SourceComputer in $SourceList)
+$Output += "<tr><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:300px;>Server</div></th><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:100px;>Status</div></th></tr>"
+foreach ($SourceComputer in $Computers)
 {
-$count=$count +1
+$CountEach=$CountEach +1
 $Server=$GetSCOMAgents -match "^$SourceComputer$"
 $ComputerUpper=$SourceComputer.ToUpper()
 if ([string]::IsNullOrWhitespace($Server))
@@ -72,34 +122,38 @@ $match="true"
 if ($match -ne $True)
 	{
 	$MMStatus = "Not in SCOM"
-	$Output += "<tr><th><div style=width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=background-color:#FACC2E;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
-	write-host -foregroundcolor red "$count. $SourceComputer - $MMStatus"
+	$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FA6258;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
+	write-host -foregroundcolor red "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 	}
 else
 	{
-	#Connect to the computer instance
-	$computer = Get-SCOMClassInstance -Name "$SourceComputer"
+	#Connect to the computer instance. WARNING I've seen duplicates using this (like Exchange servers.):
+	#$Computer = Get-SCOMClassInstance -Name "$SourceComputer"
+	# Maybe this is better:
+	#$Computer = Get-SCOMClass -Name "Microsoft.Windows.Computer" | Get-SCOMClassInstance | Where-Object {$_.DisplayName -eq "EMLXMST02E4028V.uat.atoqnet.gov.au"}
+
 	#Get current MM status.
-	if ($computer.InMaintenanceMode -eq $False)	
+	if ($Computer.InMaintenanceMode -eq $False)	
 		{
-		$MMStatus = "OK"
-		$Output += "<tr><th><div style=width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=background-color:#D2D1D6;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
-		write-host "$count. $SourceComputer - $MMStatus"
+		$MMStatus = "Ready for MM"
+		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#4CAF50;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
+		write-host "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		#This puts the windows computer object into MM.
-		Start-SCOMMaintenanceMode -Instance $computer -EndTime $EndTime -Comment "$Comment" -Reason "$Reason"
-		#sleep 10
+		#Start-SCOMMaintenanceMode -Instance $Computer -EndTime $EndTimeSeconds -Comment "$Comment" -Reason "$Reason"
+		#sleep 10 need this?
 		}
-	elseif ($computer.InMaintenanceMode -eq $True)
+	elseif ($Computer.InMaintenanceMode -eq $True)
 		{
-		$MMStatus = "Already in MM"
-		$Output += "<tr><th><div style=width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=background-color:#58FA58;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor green "$count. $SourceComputer - $MMStatus"
+		# Could add MM end date and username here?
+		$MMStatus = "Currently in MM"
+		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FAF558;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
+		write-host -foregroundcolor green "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		}
 	else
 		{
 		$MMStatus = "Unknown error"
-		$Output += "<tr><th><div style=width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=background-color:#FF4000;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor yellow "$count. $SourceComputer - $MMStatus"
+		$Output += "<tr><th><div style=font-family:arial;font-size:12;width:200px;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:12;background-color:#FA6258;color:#222924><div style=width:200px;>$MMStatus</div></th></tr>"
+		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $SourceComputer - $MMStatus"
 		}
 }
 }

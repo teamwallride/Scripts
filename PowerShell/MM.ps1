@@ -1,27 +1,22 @@
 CLS
 <#
-Version: 2024.11.1.0
+Version: 2024.11.1.1
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
 - Works on Windows and UNIX/Linux agents.
 - Sends email confirmation showing if the computer is ready for the MM job, already in MM, or not in SCOM at all.
 
-Variables to update per your needs:
-- $File
-- $EndTimeString
-- $Comment
-- $Reason
-- $SmtpServer
-- $FromAddress
-- $Recipients
-- $SmtpSubject
+=========================================
+Make sure you update these variables as needed.
+=========================================
 #>
-# Set these variables before running the script.
-# Add list of computers to the file. Must be FQDN of agent, not just the server name.
-$File = "C:\Temp\file.txt"
-# Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
-$EndTimeString = "01-11-2024 16:30:00"
-$Comment = "CHG000456042"
+$SmtpServer = ""
+$FromAddress = ""
+$Recipients = ""
+$SmtpSubject = "Maintenance Mode Notification"
+$File = "C:\Temp\file.txt" # Add list of computers to the file. Must be FQDN of agent, not just the server name.
+$EndTimeString = "01-11-2024 16:30:00" # Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
+$Comment = ""
 $Reason = "PlannedOther"
 <#
 Possible values for $Reason:
@@ -70,11 +65,6 @@ write-host
 write-host "Total servers: $CountTotal"
 write-host
 #>
-# Email settings.
-$SmtpServer = "ExchangeRelay.prod.atonet.gov.au"
-$FromAddress = "NoReplyScom@ato.gov.au"
-$Recipients = "Anthony.Milic@ato.gov.au"
-$SmtpSubject = "Maintenance Mode Notification"
 #Add-PSSnapin Microsoft.EnterpriseManagement.OperationsManager.Client
 #New-PSDrive Monitoring Microsoft.EnterpriseManagement.OperationsManager.Client\OperationsManagerMonitoring ""
 #Set-Location Monitoring:
@@ -147,12 +137,12 @@ If ($SCOMComputers -match $_) {
 
 	if ($ManagementServers.DisplayName -eq $_) { # was -contains.
 		$MMStatus = "SCOM server"
-		$Output += "<tr><th><div style=font-family:arial;font-size:10;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:10;background-color:#FA6258;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 	} elseif ($Computer.InMaintenanceMode -ne $True)	
 		{
 		$MMStatus = "Maintenance mode job scheduled."
-		$Output += "<tr><th><div style=font-family:arial;font-size:10;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:10;background-color:#4CAF50;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#4CAF50;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 		write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 		#This puts the windows computer object into MM.
 		
@@ -170,23 +160,24 @@ If ($SCOMComputers -match $_) {
 		#$LocalEndTime = "two string?"
 		#$MMStatus = "Currently in MM (ends " + $UTCEndTime.ToLocalTime() + ")" # need to format date properly, still in mm-dd-yyyy
 		$MMStatus = "Computer already in maintenance mode. Scheduled to end $FormatLocalEndTime" # need to format date properly, still in mm-dd-yyyy
-		$Output += "<tr><th><div style=font-family:arial;font-size:10;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:10;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor green "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
 	else
 		{
 		$MMStatus = "Unknown error"
-		$Output += "<tr><th><div style=font-family:arial;font-size:10;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:10;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor red "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
 } else {
 	$MMStatus = "Not in SCOM"
-	$Output += "<tr><th><div style=font-family:arial;font-size:10;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:10;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 	write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 }
 #} # end for
 }
 $Output += "</table><p>"
+# Send email.
 #Send-MailMessage -From $FromAddress -To $Recipients -Subject $SmtpSubject -BodyAsHtml ($Output | out-string) -SmtpServer $SmtpServer
+# Write to file.
 $Output | out-File c:\temp\output.html
-

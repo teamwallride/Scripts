@@ -1,13 +1,14 @@
 CLS
 <#
-Version: 2024.11.11.0
+Version: 2024.11.13.0 (yyyy.mm.dd.increment_starting_at_0)
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
 - Works on Windows and UNIX/Linux agents.
 - Sends email confirmation showing if the computer is ready for the MM job, already in MM, or not in SCOM at all.
 
 Variables to update per your needs:
-- $File
+- $OutputFile
+- $InputFile
 - $EndTimeString
 - $Comment
 - $Reason
@@ -15,12 +16,22 @@ Variables to update per your needs:
 - $FromAddress
 - $Recipients
 - $SmtpSubject
+
+If you've been given computer names only (not FQDN) this will extract the FQDN which you need for mm to work:
+$InputFile = "C:\Temp\file.txt"
+$SourceFile = gc $InputFile | sort
+foreach ($i in $SourceFile) {
+$b=Get-SCOMClass -Name "Microsoft.Windows.Computer" | Get-SCOMClassInstance | Where-Object {$_."[Microsoft.Windows.Computer].NetbiosComputerName".value -eq $i}
+$displayname=$b.displayname
+write-host "$i^$displayname"
+}
 #>
 # Set these variables before running the script.
+$OutputFile = "C:\Temp\MMOutput.txt"
 # Add list of computers to the file. Must be FQDN of agent, not just the server name.
-$File = "C:\Temp\file.txt"
+$InputFile = "C:\Temp\file.txt"
 # Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
-$EndTimeString = ""
+$EndTimeString = "19-11-2024 21:00:00"
 $Comment = ""
 $Reason = "PlannedOther"
 <#
@@ -60,7 +71,7 @@ $ScheduledEndTime=""
 $Output=""
 $User=whoami
 $ManagementServers=Get-SCOMManagementServer
-$SourceFile = gc $File | sort
+$SourceFile = gc $InputFile | sort
 $CountTotal=($SourceFile.Count)
 # MM cannot be scheduled so the start time is when script is executed manually or by scheduled task.
 $StartTime = Get-Date
@@ -112,10 +123,9 @@ a.cursor {cursor:pointer;}
 # This class works for Windows and UNIX/Linux computers.
 $SCOMComputers+=Get-SCOMClass -name System.Computer | Get-SCOMClassInstance
 $Output += "<p style='font-family:arial;font-size:20;color:#222924'>Maintenance Mode Notification</p>"
-$Output += "<p style='font-family:arial;font-size:12;color:#222924'>A maintenance mode job has started.<br><br>Initiated By: $User<br>Total Servers: $CountTotal<br>Scheduled Start Time: $StartTimeString<br>Scheduled End Time: $EndTimeString<br>Comment: $Comment</p>"
+$Output += "<p style='font-family:arial;font-size:12;color:#222924'>A maintenance mode job has started.<br><br>Initiated By: $User<br>Total Servers: $CountTotal<br>Start Time: $StartTimeString<br>End Time: $EndTimeString<br>Comment: $Comment</p>"
 $Output += "<table class=gridtable>"
 $Output += "<tr><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:100%;>Server</div></th><th style=background-color:#34568B><div style=font-family:arial;font-size:12;width:100%;>Status</div></th></tr>"
-#foreach ($_ in $SourceFile) { # start for
 
 $SourceFile | foreach {
 $CountEach=$CountEach +1
@@ -131,12 +141,12 @@ If ($SCOMComputers -match $_) {
 		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 	} elseif ($Computer.InMaintenanceMode -ne $True)	
 		{
-		$MMStatus = "Maintenance mode job scheduled."
+		$MMStatus = "Maintenance mode job started successfully."
 		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#4CAF50;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor green "$CountEach/$CountTotal. $_ - $MMStatus"
 		################################################
 		# This puts the windows computer object into MM.
-		# Start-SCOMMaintenanceMode -Instance $Computer -EndTime $EndTimeSeconds -Comment "$Comment" -Reason "$Reason"
+		Start-SCOMMaintenanceMode -Instance $Computer -EndTime $EndTimeSeconds -Comment "$Comment" -Reason "$Reason"
 		################################################
 		} elseif ($Computer.InMaintenanceMode -eq $True) {
 		$UTCEndTime = (Get-SCOMMaintenanceMode -Instance $Computer).ScheduledEndTime
@@ -157,8 +167,9 @@ If ($SCOMComputers -match $_) {
 	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 	write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 }
-#} # end for
 }
 $Output += "</table><p>"
+# Send email.
 Send-MailMessage -From $FromAddress -To $Recipients -Subject $SmtpSubject -BodyAsHtml ($Output | out-string) -SmtpServer $SmtpServer
-#$Output | out-File c:\temp\output.html
+# Send to file.
+# $Output | out-File $OutputFile

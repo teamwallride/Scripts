@@ -1,6 +1,6 @@
 CLS
 <#
-Version: 2024.11.13.0 (yyyy.mm.dd.increment_starting_at_0)
+Version: 2024.11.14.0 (yyyy.mm.dd.increment_starting_at_0)
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
 - Works on Windows and UNIX/Linux agents.
@@ -163,7 +163,7 @@ If ($SCOMComputers -match $_) {
 		write-host -foregroundcolor red "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
 } else {
-	$MMStatus = "Not in SCOM"
+	$MMStatus = "Computer not in SCOM"
 	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 	write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 }

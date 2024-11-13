@@ -1,6 +1,6 @@
 CLS
 <#
-Version: 2024.11.14.0 (yyyy.mm.dd.increment_starting_at_0)
+Version: 2024.11.14.1 (yyyy.mm.dd.increment_starting_at_0)
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
 - Works on Windows and UNIX/Linux agents.
@@ -31,7 +31,7 @@ $OutputFile = "C:\Temp\MMOutput.txt"
 # Add list of computers to the file. Must be FQDN of agent, not just the server name.
 $InputFile = "C:\Temp\file.txt"
 # Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
-$EndTimeString = "19-11-2024 21:00:00"
+$EndTimeString = "20-11-2024 21:00:00"
 $Comment = ""
 $Reason = "PlannedOther"
 <#
@@ -55,7 +55,7 @@ LossOfNetworkConnectivity
 $SmtpServer = ""
 $FromAddress = ""
 $Recipients = ""
-$SmtpSubject = "Maintenance Mode Notification"
+$SmtpSubject = ""
 # Load the console if needed.
 <#Add-PSSnapin Microsoft.EnterpriseManagement.OperationsManager.Client
 New-PSDrive Monitoring Microsoft.EnterpriseManagement.OperationsManager.Client\OperationsManagerMonitoring ""
@@ -136,8 +136,8 @@ If ($SCOMComputers -match $_) {
 	$Computer = Get-SCOMClass -Name "System.Computer" | Get-SCOMClassInstance | Where-Object {$_.DisplayName -eq $ComputerUpper}
 	# Check it's not a management or gateway server.
 	if ($ManagementServers.DisplayName -eq $_) {
-		$MMStatus = "SCOM server"
-		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
+		$MMStatus = "Gateway or Management server. Maintenance mode job will not proceed."
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 	} elseif ($Computer.InMaintenanceMode -ne $True)	
 		{
@@ -152,7 +152,7 @@ If ($SCOMComputers -match $_) {
 		$UTCEndTime = (Get-SCOMMaintenanceMode -Instance $Computer).ScheduledEndTime
 		$LocalEndTime = $UTCEndTime.ToLocalTime()
 		$FormatLocalEndTime = $LocalEndTime.ToString("dd-MM-yyyy HH:mm:ss")
-		$MMStatus = "Computer already in maintenance mode. Scheduled to end $FormatLocalEndTime" # need to format date properly, still in mm-dd-yyyy
+		$MMStatus = "Computer already in maintenance mode. Scheduled to end $FormatLocalEndTime"
 		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
@@ -164,7 +164,7 @@ If ($SCOMComputers -match $_) {
 		}
 } else {
 	$MMStatus = "Computer not in SCOM"
-	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
 	write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
 }
 }

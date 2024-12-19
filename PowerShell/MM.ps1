@@ -1,10 +1,10 @@
 CLS
 <#
-Version: 2024.11.14.1 (yyyy.mm.dd.increment_starting_at_0)
+Version: 2024.12.19.0 (yyyy.mm.dd.increment_starting_at_0)
 This is mainly for on-demand MM, it could be re-jigged for scheduled task MM. It has the following features:
 - Reads computer names from a file then MMs them.
 - Works on Windows and UNIX/Linux agents.
-- Sends email confirmation showing if the computer is ready for the MM job, already in MM, or not in SCOM at all.
+- Can send email confirmation and write output to file.
 
 Variables to update per your needs:
 - $OutputFile
@@ -31,7 +31,7 @@ $OutputFile = "C:\Temp\MMOutput.txt"
 # Add list of computers to the file. Must be FQDN of agent, not just the server name.
 $InputFile = "C:\Temp\file.txt"
 # Add end time here in valid PowerShell date format dd-MM-yyyy HH:mm:ss
-$EndTimeString = "20-11-2024 21:00:00"
+$EndTimeString = ""
 $Comment = ""
 $Reason = "PlannedOther"
 <#
@@ -55,7 +55,7 @@ LossOfNetworkConnectivity
 $SmtpServer = ""
 $FromAddress = ""
 $Recipients = ""
-$SmtpSubject = ""
+$SmtpSubject = "Maintenance Mode Notification"
 # Load the console if needed.
 <#Add-PSSnapin Microsoft.EnterpriseManagement.OperationsManager.Client
 New-PSDrive Monitoring Microsoft.EnterpriseManagement.OperationsManager.Client\OperationsManagerMonitoring ""
@@ -136,14 +136,14 @@ If ($SCOMComputers -match $_) {
 	$Computer = Get-SCOMClass -Name "System.Computer" | Get-SCOMClassInstance | Where-Object {$_.DisplayName -eq $ComputerUpper}
 	# Check it's not a management or gateway server.
 	if ($ManagementServers.DisplayName -eq $_) {
-		$MMStatus = "Gateway or Management server. Maintenance mode job will not proceed."
-		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
+		$MMStatus = "Fail. This is a Gateway or Management server."
+		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#0070C7;color:#222924><div style=width:100%;  align=left>$MMStatus</div></th></tr>"
+		write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 	} elseif ($Computer.InMaintenanceMode -ne $True)	
 		{
-		$MMStatus = "Maintenance mode job started successfully."
+		$MMStatus = "Pass. Maintenance mode job started successfully."
 		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#4CAF50;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor green "$CountEach/$CountTotal. $_ - $MMStatus"
+		write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 		################################################
 		# This puts the windows computer object into MM.
 		Start-SCOMMaintenanceMode -Instance $Computer -EndTime $EndTimeSeconds -Comment "$Comment" -Reason "$Reason"
@@ -152,24 +152,24 @@ If ($SCOMComputers -match $_) {
 		$UTCEndTime = (Get-SCOMMaintenanceMode -Instance $Computer).ScheduledEndTime
 		$LocalEndTime = $UTCEndTime.ToLocalTime()
 		$FormatLocalEndTime = $LocalEndTime.ToString("dd-MM-yyyy HH:mm:ss")
-		$MMStatus = "Computer already in maintenance mode. Scheduled to end $FormatLocalEndTime"
+		$MMStatus = "Fail. Computer already in maintenance mode. Scheduled to end $FormatLocalEndTime"
 		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
+		write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
 	else
 		{
-		$MMStatus = "Unknown error"
+		$MMStatus = "Fail. Unknown error."
 		$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
-		write-host -foregroundcolor red "$CountEach/$CountTotal. $_ - $MMStatus"
+		write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 		}
 } else {
-	$MMStatus = "Computer not in SCOM"
-	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FAF558;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
-	write-host -foregroundcolor yellow "$CountEach/$CountTotal. $_ - $MMStatus"
+	$MMStatus = "Fail. Computer not in SCOM."
+	$Output += "<tr><th><div style=font-family:arial;font-size:11;width:100%;color:#222924 align=left>$ComputerUpper</div></th><th style=font-family:arial;font-size:11;background-color:#FA6258;color:#222924><div style=width:100%; align=left>$MMStatus</div></th></tr>"
+	write-host "$CountEach/$CountTotal. $_ - $MMStatus"
 }
 }
 $Output += "</table><p>"
 # Send email.
 Send-MailMessage -From $FromAddress -To $Recipients -Subject $SmtpSubject -BodyAsHtml ($Output | out-string) -SmtpServer $SmtpServer
 # Send to file.
-# $Output | out-File $OutputFile
+$Output | out-File $OutputFile

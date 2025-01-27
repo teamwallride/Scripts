@@ -1,2 +1,2 @@
-param($MpFileName, $OutputFolder)
-C:\Build\MPSeal\FASTSEAL.exe $MpFileName /Keyfile C:\Build\MPseal\PairKey.snk /Company "NAME" /Outdir $OutputFolder /Copyright "NAME"
+param($MpFilePath, $MpOutputFolder)
+C:\Build\MPSeal\FASTSEAL.exe $MpFilePath /Keyfile C:\Build\MPseal\PairKey.snk /Company "NAME" /Outdir $MpOutputFolder /Copyright "NAME"

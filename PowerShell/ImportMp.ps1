@@ -1,2 +1,2 @@
-param ($MpFileName)
-Import-SCOMManagementPack -Path $MpFileName
+param ($MpFilePath)
+Import-SCOMManagementPack -Path $MpFilePath
